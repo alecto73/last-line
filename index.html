@@ -334,19 +334,27 @@ function feedUp(ux,uy,uz,k){
   if(!gotOri){fS=rs;fT=rt;neuT=rt;neuS=rs;}gotOri=true;
   k=k||0.35;fS+=(rs-fS)*k;fT+=(rt-fT)*k;
 }
+// 휴대폰 뒷면(카메라 방향)이 실제 공간에서 어디를 향하는지 계산한다.
+// 회전 속도 축 이름이나 화면 회전 각도에 의존하지 않아서 기종마다 달라지지 않는다.
+let headAcc=0,headPrev=null,camPitch=0,pitch0=0;
 window.addEventListener('deviceorientation',e=>{
-  if(e.beta==null||e.gamma==null)return;lastOri=performance.now();
+  if(e.beta==null||e.gamma==null)return;const now=performance.now();lastOri=now;
   const b=e.beta*D2R,g=e.gamma*D2R;feedUp(-Math.sin(g)*Math.cos(b),Math.sin(b),Math.cos(g)*Math.cos(b));
+  if(e.alpha==null)return;
+  const a=e.alpha*D2R,cA=Math.cos(a),sA=Math.sin(a),cB=Math.cos(b),sB=Math.sin(b),cG=Math.cos(g),sG=Math.sin(g);
+  // R = Rz(alpha)·Rx(beta)·Ry(gamma) 의 셋째 열 = 화면 바깥 방향, 뒷면은 그 반대
+  const vx=-(cG*sA*sB+cA*sG),vy=-(sA*sG-cA*cG*sB),vz=-(cB*cG);
+  const hz=Math.hypot(vx,vy);
+  camPitch=Math.atan2(vz,hz);
+  if(hz>0.15){const h=Math.atan2(vx,vy);
+    if(headPrev!==null){let d=h-headPrev;while(d>Math.PI)d-=TAU;while(d<-Math.PI)d+=TAU;headAcc+=d;}
+    headPrev=h;}
+  if(!gotHead){yaw0=headAcc;pitch0=camPitch;}
+  gotHead=true;lastGyro=now;
 });
+let gotHead=false;
 window.addEventListener('devicemotion',e=>{
-  const now=performance.now(),rr=e.rotationRate;
-  if(rr&&rr.alpha!=null&&rr.beta!=null){
-    const dt=lastGyroTs?Math.min(0.1,(now-lastGyroTs)/1000):0;lastGyroTs=now;
-    // rotationRate: alpha = x축, beta = y축, gamma = z축 회전 속도 (W3C 명세·브라우저 실제 구현)
-    const a=scrAng(),wUp=rr.alpha*Math.sin(a)+rr.beta*Math.cos(a);
-    if(Math.abs(wUp)>0.6)gyroYaw-=wUp*D2R*dt;
-    if(Math.abs(rr.beta)+Math.abs(rr.gamma)+Math.abs(rr.alpha||0)>0.0001)lastGyro=now;
-  }
+  const now=performance.now();
   if(now-lastOri<500)return;
   const g=e.accelerationIncludingGravity;if(!g||g.x==null||g.y==null||g.z==null)return;
   const k=IOS?-1:1,n=Math.hypot(g.x,g.y,g.z);if(n<4||n>16)return;
@@ -361,7 +369,7 @@ function mode(){
   return gy?'turn':(ori?'tilt':'touch');
 }
 function calibrate(showMsg){
-  neuS=fS;neuT=fT;yaw0=gyroYaw;tYaw=0;tPitch=0;aimYaw=0;aimPitch=0;
+  neuS=fS;neuT=fT;yaw0=headAcc;pitch0=camPitch;tYaw=0;tPitch=0;aimYaw=0;aimPitch=0;
   if(showMsg)toast(mode()==='touch'?'정면으로 되돌렸습니다':'지금 방향이 정면입니다');
 }
 let tYaw=0,tPitch=0;
@@ -371,12 +379,12 @@ function readInput(dt){
   const md=mode(),sx=opt.invX?-1:1,sy=opt.invY?-1:1,sens=opt.sens;
   let y=aimYaw,p=aimPitch;
   if(md==='turn'){
-    let raw=(gyroYaw-yaw0)*sens*sx;
+    let raw=(headAcc-yaw0)*sens*sx;
     if(raw>YAWLIM){yaw0+= (raw-YAWLIM)/(sens*sx);raw=YAWLIM;}else if(raw<-YAWLIM){yaw0+=(raw+YAWLIM)/(sens*sx);raw=-YAWLIM;}
     y=raw;
   }else if(md==='tilt'){y=(fS-neuS)*1.25*sens*sx;}
   else{y=tYaw;}
-  if(md==='touch')p=tPitch;else p=(fT-neuT)*0.85*sens*sy;
+  if(md==='touch')p=tPitch;else if(md==='turn')p=(camPitch-pitch0)*sens*sy;else p=(fT-neuT)*0.85*sens*sy;
   if(keys.ArrowLeft||keys.KeyA){tYaw-=dt*0.9;y=tYaw;}if(keys.ArrowRight||keys.KeyD){tYaw+=dt*0.9;y=tYaw;}
   if(keys.ArrowUp||keys.KeyW){tPitch+=dt*0.5;p=tPitch;}if(keys.ArrowDown||keys.KeyS){tPitch-=dt*0.5;p=tPitch;}
   aimYaw=clamp(y,-YAWLIM,YAWLIM);aimPitch=clamp(p,PMIN,PMAX);
@@ -797,9 +805,9 @@ const sbt=$('startBtn');
 loadAssets().then(()=>{buildStageSprites(STAGES[0]);sbt.disabled=false;sbt.textContent='방어 시작';});
 requestAnimationFrame(t=>{lastT=t;requestAnimationFrame(frame);});
 if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{});}
-if(/[?&]debug/.test(location.search))window.__zs={get:()=>({state,wave,score,kills,ammo,zombies:zombies.map(z=>({t:z.type,st:z.st,hp:z.hp,pose:z.pose,z:z.z,x:z.x,sx:z.sx,sy:z.sy,dw:z.dw,dh:z.dh}))}),
+if(/[?&]debug/.test(location.search))window.__zs={get:()=>({mode:mode(),aim:[aimYaw,aimPitch],state,wave,score,kills,ammo,zombies:zombies.map(z=>({t:z.type,st:z.st,hp:z.hp,pose:z.pose,z:z.z,x:z.x,sx:z.sx,sy:z.sy,dw:z.dw,dh:z.dh}))}),
   spawn:(t,x,z)=>{spawn(t);const o=zombies[zombies.length-1];o.x=x;o.xT=x;o.z=z;return o;},clear:()=>{zombies=[];spawnLeft=0;bossPending=false;},
-  aim:(y,p)=>{tYaw=y;tPitch=p;opt.ctl='touch';},scope:on=>setScope(on),fire:()=>tryFire(),freeze:v=>{window.__freeze=v;},
+  aim:(y,p)=>{tYaw=y;tPitch=p;opt.ctl='touch';},ctl:v=>{opt.ctl=v;},scope:on=>setScope(on),fire:()=>tryFire(),freeze:v=>{window.__freeze=v;},
   set:(k,v)=>{if(k==='stage'){stageIdx=v;buildStageSprites(STAGES[v]);}if(k==='state'){state=v;stateT=0;}}};
 })();
 </script>
