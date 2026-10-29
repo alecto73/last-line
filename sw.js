@@ -1,6 +1,6 @@
 // 마지막 방어선 — 오프라인 실행용 서비스 워커
 // 게임을 고쳐서 다시 올릴 때는 아래 버전 숫자를 하나 올려주세요.
-const CACHE = 'last-line-v1';
+const CACHE = 'last-line-v2';
 const FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png', './icons/favicon-32.png'];

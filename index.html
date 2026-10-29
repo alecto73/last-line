@@ -340,9 +340,10 @@ window.addEventListener('deviceorientation',e=>{
 });
 window.addEventListener('devicemotion',e=>{
   const now=performance.now(),rr=e.rotationRate;
-  if(rr&&rr.beta!=null&&rr.gamma!=null){
+  if(rr&&rr.alpha!=null&&rr.beta!=null){
     const dt=lastGyroTs?Math.min(0.1,(now-lastGyroTs)/1000):0;lastGyroTs=now;
-    const a=scrAng(),wUp=rr.beta*Math.sin(a)+rr.gamma*Math.cos(a);
+    // rotationRate: alpha = x축, beta = y축, gamma = z축 회전 속도 (W3C 명세·브라우저 실제 구현)
+    const a=scrAng(),wUp=rr.alpha*Math.sin(a)+rr.beta*Math.cos(a);
     if(Math.abs(wUp)>0.6)gyroYaw-=wUp*D2R*dt;
     if(Math.abs(rr.beta)+Math.abs(rr.gamma)+Math.abs(rr.alpha||0)>0.0001)lastGyro=now;
   }
